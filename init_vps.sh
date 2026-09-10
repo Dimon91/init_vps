@@ -187,8 +187,11 @@ if [[ $TTY_IN -eq 0 ]]; then
 fi
 
 if [[ ! -f "$SSHD_CONFIG" ]]; then
-    err "Файл $SSHD_CONFIG не найден. Установлен ли openssh-server?"
-    exit 1
+    info "openssh-server не установлен, устанавливаю..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y openssh-server
+    success "openssh-server установлен."
 fi
 
 # бинарник sshd нужен для проверки конфигурации (sshd -t)
@@ -339,7 +342,7 @@ step_install_sudo() {
 step_create_user() {
     step "ШАГ 3. Создание пользователя '$USERNAME'"
     local home
-    home="$(getent passwd "$USERNAME" 2>/dev/null | cut -d: -f6)"
+    home="$(getent passwd "$USERNAME" 2>/dev/null | cut -d: -f6)" || home=""
 
     if id -u "$USERNAME" >/dev/null 2>&1; then
         warn "Пользователь '$USERNAME' уже существует, пропускаю создание."
@@ -352,6 +355,10 @@ step_create_user() {
         fi
         success "Пользователь '$USERNAME' создан."
         home="$(getent passwd "$USERNAME" | cut -d: -f6)"
+        if [[ -z "$home" ]]; then
+            err "Не удалось определить домашний каталог пользователя '$USERNAME' после создания."
+            exit 1
+        fi
     fi
 
     # группа sudo (в Debian/Ubuntu) или wheel (в RHEL-подобных)
@@ -610,7 +617,7 @@ step_apply() {
 
     # определяем имя службы: в Debian/Ubuntu — ssh, в остальных — sshd
     local unit="ssh"
-    if ! systemctl list-unit-files 2>/dev/null | grep -qE '^ssh\.service'; then
+    if [[ ! -f /lib/systemd/system/ssh.service && ! -f /etc/systemd/system/ssh.service ]]; then
         unit="sshd"
     fi
 
